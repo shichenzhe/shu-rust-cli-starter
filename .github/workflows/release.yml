@@ -1,0 +1,59 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            archive: tar.gz
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            archive: tar.gz
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            archive: tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive: zip
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }}
+      - name: Package
+        # 归档根直接是可执行文件（不带包裹目录）；命名含 target triple，
+        # self_update 按该约定匹配制品
+        shell: bash
+        run: |
+          BIN=$(grep -m1 '^name' Cargo.toml | cut -d'"' -f2)
+          VERSION=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
+          ART="${BIN}-${VERSION}-${{ matrix.target }}"
+          OUT="$RUNNER_TEMP/${ART}.${{ matrix.archive }}"
+          cd "target/${{ matrix.target }}/release"
+          if [ "${{ matrix.archive }}" = "zip" ]; then
+            # windows runner：Git Bash 的 GNU tar 不支持 -a 写 zip，显式用系统 bsdtar
+            /c/Windows/System32/tar.exe -a -cf "$OUT" "${BIN}.exe"
+          else
+            tar -czf "$OUT" "$BIN"
+          fi
+          echo "ARTIFACT=$OUT" >> "$GITHUB_ENV"
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ARTIFACT }}

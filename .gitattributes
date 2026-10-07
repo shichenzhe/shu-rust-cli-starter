@@ -1,0 +1,2 @@
+# 统一 LF：防 Windows 检出 CRLF 破坏三平台 CI 的 fmt --check
+* text=auto eol=lf
